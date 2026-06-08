@@ -172,13 +172,9 @@ function setSceneImage(scene) {
   const img = document.getElementById('scene-image');
   const key = resolveImageKey(scene);
   const url = SCENE_IMAGES[key] || '';
-  if (url && img.src !== url) {
-    img.style.opacity = '0';
+  if (url) {
     img.src = url;
-    img.onload = () => {
-      img.style.transition = 'opacity 0.8s ease';
-      img.style.opacity = '1';
-    };
+    img.style.opacity = '1';
   }
 }
 
