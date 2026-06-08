@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>그림 속 이야기</title>
+<style>
+body{
+  background:#0f0f0f;
+  color:#e5e5e5;
+  font-family:serif;
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+#game{
+  width:1280px;
+  max-width:95%;
+  background:#181818;
+  border-radius:20px;
+  padding:30px;
+  box-shadow:0 0 30px rgba(0,0,0,.6);
+}
+
+#title{
+  text-align:center;
+  margin-bottom:20px;
+}
+
+#title h1{
+  margin:0;
+  font-size:2rem;
+}
+
+#image-box{
+  width:1280px;
+  height:720px;
+  background:#111;
+  border-radius:15px;
+  overflow:hidden;
+  margin-bottom:20px;
+}
+
+#scene-image{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  transition: opacity 0.8s ease;
+}
+
+#scene{
+  font-size:1.5rem;
+  margin-bottom:15px;
+  text-align:center;
+}
+
+#log{
+  background:#080808;
+  padding:20px;
+  height:160px;
+  overflow:auto;
+  border-radius:15px;
+  margin-bottom:20px;
+  white-space:pre-line;
+}
+
+#choices button{
+  width:100%;
+  margin:8px 0;
+  padding:15px;
+  border:none;
+  border-radius:12px;
+  background:#2f2f2f;
+  color:white;
+  cursor:pointer;
+  transition:.2s;
+}
+
+#choices button:hover{
+  background:#444;
+  transform:scale(1.02);
+}
+
+#status{
+  margin-top:20px;
+  display:flex;
+  justify-content:space-between;
+  font-size:1rem;
+}
+</style>
+</head>
+<body>
+
+<div id="game">
+
+  <header id="title">
+    <h1>그림 속 이야기</h1>
+  </header>
+
+  <div id="image-box">
+    <img id="scene-image" src="" alt="">
+  </div>
+
+  <div id="scene"></div>
+
+  <div id="log"></div>
+
+  <div id="choices"></div>
+
+  <div id="status">
+    <span>이성: <b id="sa"></b></span>
+    <span>단서: <b id="cl"></b></span>
+    <span>유대: <b id="af"></b></span>
+  </div>
+
+</div>
+
+<script>
+let state = {
+  scene: 'COVER',
+  Sanity: 5,
+  Clue: 0,
+  Affinity: 5
+};
+
+// 장면별 이미지 (Unsplash)
+const SCENE_IMAGES = {
+  COVER:          'images/cover.jpg',       // 타이틀 화면 (PROLOGUE와 공유)
+  PROLOGUE:       '',                        // 프롤로그 → COVER 이미지 공유 (resolveImageKey 참조)
+  S1:             'images/s1.jpg',          // 저택의 방
+  MOVE1:          'images/move1.jpg',       // 복도 (첫 번째)
+  S2:             'images/s2.jpg',          // 드레스가 놓인 방 (AFTER2와 공유)
+  MOVE2:          'images/move2.jpg',       // 복도 (두 번째)
+  S3:             'images/s3.jpg',          // 편지가 흩어진 방 (REVEAL_SECRET, AFTER3과 공유)
+  MOVE3:          'images/move3.jpg',       // 마지막 복도
+  S4:             'images/s4.jpg',          // 빈 방의 액자
+  AFTER4:         'images/after4.jpg',      // 액자 수평 맞춘 후
+  S5_HIDDEN:      'images/s5_hidden.jpg',   // 결말: 진엔딩
+  S5_TRUTH:       'images/s5_truth.jpg',    // 결말: 진실과의 조우
+  S5_BOND:        'images/s5_bond.jpg',     // 결말: 그림과 사람
+  S5_UNKNOWN:     'images/s5_unknown.jpg',  // 결말: 아직 모른다
+  BAD_ENDING:     'images/bad_ending.jpg',  // 배드엔딩: 이성을 잃었다
+};
+
+// 장면 키 → 실제 이미지 키 매핑
+function resolveImageKey(scene) {
+  if (scene === 'PROLOGUE')      return 'COVER';
+  if (scene === 'AFTER2')        return 'S2';
+  if (scene === 'REVEAL_SECRET') return 'S3';
+  if (scene === 'AFTER3')        return 'S3';
+  return scene;
+}
+
+function setSceneImage(scene) {
+  const img = document.getElementById('scene-image');
+  const key = resolveImageKey(scene);
+  const url = SCENE_IMAGES[key] || '';
+  if (url && img.src !== url) {
+    img.style.opacity = '0';
+    img.src = url;
+    img.onload = () => {
+      img.style.transition = 'opacity 0.8s ease';
+      img.style.opacity = '1';
+    };
+  }
+}
+
+function $(id){ return document.getElementById(id); }
+
+function updateStatus(){
+  $('sa').textContent = state.Sanity;
+  $('cl').textContent = state.Clue;
+  $('af').textContent = state.Affinity;
+}
+
+async function log(t){
+  const box = $('log');
+  for(let i = 0; i < t.length; i++){
+    box.textContent += t[i];
+    box.scrollTop = box.scrollHeight;
+    await new Promise(r => setTimeout(r, 35));
+  }
+  box.textContent += '\n\n';
+}
+
+function clear(){
+  $('choices').innerHTML = '';
+}
+
+function btn(text, fn){
+  let b = document.createElement('button');
+  b.textContent = text;
+  b.onclick = fn;
+  $('choices').appendChild(b);
+}
+
+async function go(s){
+  $('log').textContent = '';
+  state.scene = s;
+  setSceneImage(s);
+  await render();
+}
+
+async function render(){
+  clear();
+  updateStatus();
+  setSceneImage(state.scene);
+  let s = state.scene;
+
+  // 이성 0 이하 → 배드 엔딩
+  if(state.Sanity <= 0){
+    setSceneImage('BAD_ENDING');
+    $('scene').textContent = '이성을 잃었다';
+    $('log').textContent = '';
+    await log('소녀는 갑자기 모든 것이 두려워졌다.');
+    await log('그림 속 인물들은 여전히 친절하지만,');
+    await log('소녀에게 그 모든 것이 낯설게 느껴졌다.');
+    btn('다시 시작', () => location.reload());
+    return;
+  }
+
+  // COVER
+  if(s === 'COVER'){
+    $('scene').innerHTML =
+      '<h1 style="font-size:2.4em;margin-bottom:10px;">그림 속 이야기</h1>' +
+      '<div style="opacity:.8;margin-bottom:30px;">당신은 그림 속 기억을 마주하게 됩니다.</div>';
+    $('log').textContent = '';
+    btn('시작하기', () => go('PROLOGUE'));
+    return;
+  }
+
+  // PROLOGUE
+  else if(s === 'PROLOGUE'){
+    $('scene').textContent = '프롤로그';
+    await log('어떤 저택에서 사건이 일어났다.');
+    await log('살해당한 것은 그 저택의 주인,');
+    await log('그는 언제나 모두에게 친절했고,');
+    await log('많은 사람들의 존경과 사랑을 받았다.');
+    await log('');
+    await log('특히 한 하녀를 자신의 딸처럼 아꼈다.');
+    await log('');
+    await log('하지만 그 하녀에게는');
+    await log('누구도 모르는 비밀이 있었다.');
+    await log('그 비밀은 바로...');
+    btn('기억 속으로 들어간다', () => go('S1'));
+  }
+
+  // S1
+  else if(s === 'S1'){
+    $('scene').textContent = '저택의 방';
+    await log('공기가 무겁게 가라앉아 있다.');
+    await log('사건이 일어난 이후로 저택은 낯선 침묵으로 가득하다.');
+    await log('이곳에는 오로지 한 명의 소녀뿐이다.');
+    await log('…벽에 걸린 그림 하나를 제외하면.');
+    await log('');
+    await log('소녀는 알고 있다.');
+    await log('이 그림들이 단순한 그림이 아니라는 것을.');
+    await log('그들은 자신의 가장 친한 친구이자,');
+    await log('사건의 유일한 목격자라는 것을.');
+    btn('그림에 손을 댄다', () => go('MOVE1'));
+  }
+
+  // MOVE1
+  else if(s === 'MOVE1'){
+    $('scene').textContent = '복도';
+    await log('손끝이 닿는 순간—');
+    await log('포근한 공기가 온몸을 감싸온다.');
+    await log('소녀는 어떤 저택의 복도에 서있었다.');
+    await log('눈 앞의 문을 연다.');
+    btn('걸음을 옮긴다', () => go('S2'));
+  }
+
+  // S2
+  else if(s === 'S2'){
+    $('scene').textContent = '드레스가 놓인 방';
+    await log('여자는 거울 앞에 서 있다.');
+    await log('소녀를 보자 반갑게 인사한다.');
+    await log('"오랜만이에요"');
+    await log('"몇 번을 입어도 드레스를 입는건 여전히 힘드네요"');
+    await log('"드레스 입는 걸 도와주시겠어요?"');
+    await log("'어떤 드레스가 좋으려나'");
+    await log('그녀가 조용히 중얼거렸다.');
+    await log('소녀는 어떤 드레스를 권할지 고민한다.');
+
+    btn('밝은 드레스를 고른다 (유대+3)', async () => {
+      clear();
+      state.Affinity += 3;
+      $('log').textContent = '';
+      await log('소녀는 여자가 밝은 드레스를 입고 있는 모습을 자주 봤다.');
+      await log('소녀가 밝은 드레스를 들어 올렸다.');
+      await log('여자의 표정이 조금 밝아진다.');
+      await log('"내가 가장 좋아하는 드레스예요."');
+      updateStatus();
+      btn('다음으로', () => go('AFTER2'));
+    });
+
+    btn('어두운 드레스를 고른다 (단서+2, 이성-1)', async () => {
+      clear();
+      state.Clue += 2;
+      state.Sanity -= 1;
+      $('log').textContent = '';
+      await log('들어 올린 드레스에서 희미한 핏자국을 발견했다.');
+      await log('"어머나, 괜찮아요?"');
+      await log('여자가 놀란 소녀를 조용히 달랜다.');
+      await log('"그러고 보니, 그날도 이 드레스를 입었어요"');
+      await log('여자는 이상할 정도로 평온하게 말했다.');
+      updateStatus();
+      if(state.Sanity <= 0){ await render(); return; }
+      btn('다음으로', () => go('AFTER2'));
+    });
+
+    btn('잠시 생각한다 (유대+1, 단서+1)', async () => {
+      clear();
+      state.Clue += 1;
+      state.Affinity += 1;
+      $('log').textContent = '';
+      await log('여자가 혼자서 드레스를 골랐다.');
+      await log('"어르신의 원수를 갚고 싶은 건가요?"');
+      await log('"다치지 않도록 조심해요."');
+      updateStatus();
+      btn('다음으로', () => go('AFTER2'));
+    });
+  }
+
+  // AFTER2
+  else if(s === 'AFTER2'){
+    $('scene').textContent = '';
+    await log('"도와줘서 고마워요."');
+    await log('"어두워서 잘 보이지는 않았지만, 범인은 키가 굉장히 컸어요"');
+    await log('');
+    await log('"발자국을 따라가면 단서가 있을 거예요."');
+    await log('그녀는 한동안 거울을 본다.');
+    await log('바닥에는 여러 가지 발자국이 어지럽게 남아있다.');
+    await log('소녀는 제일 큰 발자국을 따라간다.');
+    state.Clue += 5;
+    updateStatus();
+    await log('단서 +5');
+    btn('발자국을 따라간다.', () => go('MOVE2'));
+  }
+
+  // MOVE2
+  else if(s === 'MOVE2'){
+    $('scene').textContent = '복도';
+    await log('복도는 여전히 길다.');
+    await log('하지만 그날따라, 끝이 보이지 않을 만큼 길게 느껴졌다.');
+    await log('발자국은 복도 끝, 어떤 방으로 이어지고 있었다.');
+    btn('그 방으로 들어간다', () => go('S3'));
+  }
+
+  // S3
+  else if(s === 'S3'){
+    $('scene').textContent = '편지가 흩어진 방';
+    await log('이 그림 속에서는 언제나 종이 냄새가 났다.');
+    await log('소녀는 이 냄새를 좋아했다.');
+    await log('산더미 같은 편지 속에 남자가 있었다.');
+    await log('"지금은 편지를 정리하느라 바빠."');
+    await log('남자는 잠시 손을 멈췄다.');
+    await log('"혹시 도와줄 수 있을까?"');
+
+    btn('시간 순서로 정리한다 (단서+3)', async () => {
+      clear();
+      state.Clue += 3;
+      $('log').textContent = '';
+      await log('편지들을 시간 순서대로 나열한다.');
+      await log('갈수록 편지의 글씨체가 지저분해지는 것이 눈에 보인다.');
+      await log('편지를 쓴 사람은 무언가 불안한 일이 있었던 모양이다.');
+      updateStatus();
+      btn('다음으로', () => go('AFTER3'));
+    });
+
+    btn('키워드로 정리한다 (유대+1, 단서+1)', async () => {
+      clear();
+      state.Affinity += 1;
+      state.Clue += 1;
+      $('log').textContent = '';
+      await log('편지들을 감정별로 나열한다.');
+      await log('상대에게 부탁하는 편지가 유독 많다.');
+      await log('가끔씩 분노로 가득 찬 편지도 보인다.');
+      updateStatus();
+      btn('다음으로', () => go('AFTER3'));
+    });
+
+    btn('눈에 띄는 것부터 본다 (단서+5, 이성-2)', async () => {
+      clear();
+      state.Clue += 5;
+      state.Sanity -= 2;
+      $('log').textContent = '';
+      await log('익숙한 글씨체가 보인다... 분명 어디서 본 글씨체다.');
+      await log('잠깐...');
+      await log('이건 이 저택 주인의 글씨체다.');
+      await log('그 사람이 쓴 편지가 왜 그림 속에 있는 거지?');
+      updateStatus();
+      if(state.Sanity <= 0){ await render(); return; }
+      btn('다음으로', () => go('REVEAL_SECRET'));
+    });
+  }
+
+  // REVEAL_SECRET
+  else if(s === 'REVEAL_SECRET'){
+    $('scene').textContent = '';
+    await log('남자가 소리쳤다.');
+    await log('"이건 보여주면 안 되는 편지였는데."');
+    await log('...');
+    await log('잠시 침묵이 흘렀다.');
+    await log('"이미 봐버렸으니 어쩔 수 없나."');
+    await log('"그 사람도 이제는 없고..."');
+    await log('남자는 직접적으로 말하지는 않았지만,');
+    await log('"그 사람"이 이 저택의 주인이라는 것은 분명했다.');
+    await log('소녀가 가야 할 곳은 명확해졌다.');
+    await log('남자는 더 이상 아무 말도 하지 않았다.');
+    await log('대신, 소녀를 조용히 바라볼 뿐이었다.');
+    state.Clue += 5;
+    state.Sanity -= 2;
+    updateStatus();
+    await log('단서 +5, 이성 -2');
+    if(state.Sanity <= 0){ await render(); return; }
+    btn('다음으로', () => go('MOVE3'));
+  }
+
+  // AFTER3
+  else if(s === 'AFTER3'){
+    $('scene').textContent = '';
+    await log('남자가 소리쳤다.');
+    await log('"이건 보여주면 안 되는 편지였는데."');
+    await log('...');
+    await log('잠시 침묵이 흘렀다.');
+    await log('"이미 봐버렸으니 어쩔 수 없나."');
+    await log('"그 사람도 이제는 없고..."');
+    await log('"북쪽으로 가봐."');
+    await log('북쪽에는 방이 하나뿐이다.');
+    state.Clue += 5;
+    updateStatus();
+    await log('단서 +5');
+    btn('다음으로', () => go('MOVE3'));
+  }
+
+  // MOVE3
+  else if(s === 'MOVE3'){
+    $('scene').textContent = '복도';
+    await log('마지막 방이다.');
+    await log('분명 진실이 소녀를 기다리고 있을 것이다.');
+    await log('문 앞에서, 잠깐 멈춘다.');
+    btn('문을 연다', () => go('S4'));
+  }
+
+  // S4
+  else if(s === 'S4'){
+    $('scene').textContent = '비어 있는 방';
+    await log('벽 하나.');
+    await log('그리고 액자 하나.');
+    await log('이 저택의 주인은 이곳에서 많은 시간을 보내곤 했다.');
+    await log('그리고 이 방에 들어오는 것을 허락하지 않았다.');
+    await log('소녀조차도 예외는 아니었다.');
+await log('액자 속에는 키큰 남자가 있었다.');
+    await log('액자 속 인물이 천천히 눈을 깜빡였다.');
+    await log('액자 속 인물이 말을 걸어왔다.');
+    await log('"이 액자는 수평이 맞지 않네."');
+    await log('"좀 도와주겠나?"');
+
+    btn('수평을 맞춘다 (유대+3)', async () => {
+      clear();
+      state.Affinity += 3;
+      $('log').textContent = '';
+      await log('"도와줘서 고맙네."');
+      await log('"비뚤어진 액자는 어딘가 불편하다네."');
+      await log('"자네는... 영원히 모를지도 모르겠군."');
+      updateStatus();
+      btn('다음으로', () => go('AFTER4'));
+    });
+
+    btn('이유를 묻는다 (유대+3)', async () => {
+      clear();
+      state.Affinity += 3;
+      $('log').textContent = '';
+      await log('"이유... 그런 게 중요하단 말인가"');
+      await log('"세상 모든 일이 이유로 돌아가는 건 아닐세."');
+      await log('소녀가 액자의 수평을 맞췄다.');
+      updateStatus();
+      btn('다음으로', () => go('AFTER4'));
+    });
+
+    btn('구조를 살핀다 (유대+3)', async () => {
+      clear();
+      state.Affinity += 3;
+      $('log').textContent = '';
+      await log('"그렇게 꼼꼼하게 볼 필요는 없네."');
+      await log('"나도 예전에는 완벽을 좇았지만,"');
+      await log('"세상에 완벽한 건 없다네."');
+      await log('액자 속 인물의 목소리는 묘하게 낮아졌다.');
+      updateStatus();
+      btn('다음으로', () => go('AFTER4'));
+    });
+  }
+
+  // AFTER4
+  else if(s === 'AFTER4'){
+    $('scene').textContent = '';
+    await log('손을 떼자—');
+    await log('액자가 멈춘다.');
+    await log('완전히 반듯해졌다.');
+    btn('마지막으로', () => go('S5'));
+  }
+
+  // S5 — 엔딩 (Clue/Affinity 기준으로 분기)
+  else if(s === 'S5'){
+    $('scene').textContent = '결말';
+    $('log').textContent = '';
+
+    if(state.Clue >= 15 && state.Affinity >= 10){
+      // 히든 엔딩
+      setSceneImage('S5_HIDDEN');
+      await log('액자속 남자가 말한다.');
+await log('"그와 나는 오랜 친구였다네"');
+await log('"하지만 그가 나를 배신했지"');
+await log('"...알고있다네"');
+await log('"그렇다고 사람을 죽이면 안된다는 것은."');
+await log('액자속 남자가 쓸쓸한 표정으로 말했다.');
+await log('누군가에게 털어놓고 싶었던 모양이다.');
+await log('"죗값은 내가 알아서 치르겠네."');
+await log('소녀는 그가 어떤 방식으로 죗값을 치를지 알수 없었다.');
+await log('하지만 그의 눈빛은 진심이었다.');
+
+
+
+
+
+
+
+
+
+
+      $('scene').textContent = '엔딩: 진엔딩';
+    
+} else if(state.Clue >= 15){
+      setSceneImage('S5_TRUTH');
+      await log('수많은 단서들이 하나의 그림처럼 이어진다.');
+      await log('소녀는 마침내 그날 밤의 진실을 보았다.');
+      await log('남자가 말했다.');
+await log('"그래, 내가 그를 죽였다네."');
+await log('"하지만 누가 그 말을 믿어줄거 같나?"');
+await log('그의 말이 맞다.');
+await log('그림속으로 들어갈수 있다니, 그런말을 누가 믿겠는가?');
+
+
+
+
+      await log('그래서 소녀는, 그것을 알면서도 침묵해야 했다.');
+      await log('그림 속 기억은 서서히 희미해졌다.');
+      $('scene').textContent = '엔딩: 진실과의 조우';
+    } else if(state.Affinity >= 10){
+      setSceneImage('S5_BOND');
+      await log('"다른 그림들을 도와줬다는 이야기를 많이 들었네."');
+      await log('"자네는 정말 좋은 사람이야."');
+      await log('그렇게 말하는 액자속 남자의 표정은 어딘가 공허해 보였다');
+ await log('"내 부탁을 하나 더 들어줄 수 있나?."');
+ await log('그의 부탁은 어렵지 않았다.');
+ await log('이 저택 주인의 무덤을 보고 싶다는 것이었다.');
+
+      await log('"지옥에서 다시 만나세"');
+await log('소녀는 그가 한 말을 잘 이해하지 못했다');
+      $('scene').textContent = '엔딩: 그림과 사람';
+    } else {
+      setSceneImage('S5_UNKNOWN');
+await log('"잘가게나."');
+await log('"가능하면 다음에 또 들러주게나."');
+
+
+      await log('소녀는 방 밖으로 나왔다.');
+      await log('무언가를 얻은 것 같기도 하고,');
+      await log('잃은 것 같기도 하다.');
+      await log('아직, 이야기는 끝나지 않았다.');
+      $('scene').textContent = '엔딩: 아직 모른다';
+    }
+
+    btn('다시 시작', () => location.reload());
+  }
+}
+
+render();
+</script>
+
+</body>
+</html>
