@@ -303,6 +303,8 @@ async function render(){
       await log('소녀가 밝은 드레스를 들어 올렸다.');
       await log('여자의 표정이 조금 밝아진다.');
       await log('"내가 가장 좋아하는 드레스예요."');
+      await log('"하마터면 이 드레스를 망칠 뻔했어요."')
+      await log('"다행이지 뭐예요."')
       updateStatus();
       btn('다음으로', () => go('AFTER2'));
     });
@@ -329,6 +331,7 @@ async function render(){
       $('log').textContent = '';
       await log('여자가 혼자서 드레스를 골랐다.');
       await log('"어르신의 원수를 갚고 싶은 건가요?"');
+      await log('"조심해요. 어르신은... 당신이 생각하는 것과 다른 분일 수도 있어요."')
       await log('"다치지 않도록 조심해요."');
       updateStatus();
       btn('다음으로', () => go('AFTER2'));
