@@ -331,7 +331,7 @@ async function render(){
       $('log').textContent = '';
       await log('여자가 혼자서 드레스를 골랐다.');
       await log('"어르신의 원수를 갚고 싶은 건가요?"');
-      await log('"조심해요. 어르신은... 당신이 생각하는 것과 다른 분일 수도 있어요."')
+      await log('"뭐, 어떻게 되든 상관없지만요."');
       await log('"다치지 않도록 조심해요."');
       updateStatus();
       btn('다음으로', () => go('AFTER2'));
@@ -346,6 +346,7 @@ async function render(){
     await log('"복수라고... 중얼거리면서 지나갔어요."');
     await log('');
     await log('"발자국을 따라가면 단서가 있을 거예요."');
+    await log('"조심해요. 어르신은... 당신이 생각하는 것과 다른 분일 수도 있어요."')
     await log('그녀는 한동안 거울을 본다.');
     await log('바닥에는 여러 가지 발자국이 어지럽게 남아있다.');
     await log('소녀는 제일 큰 발자국을 따라간다.');
